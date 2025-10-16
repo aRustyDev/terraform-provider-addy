@@ -117,7 +117,7 @@ func (p *addyProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	}
 
 	// Create a new HashiCups client using the configuration values
-	client, err := addyutils.NewClient()
+	client, err := addyutils.NewClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create HashiCups API Client",
