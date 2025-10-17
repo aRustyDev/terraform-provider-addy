@@ -14,3 +14,8 @@ provider "addy" {
   # Or set the ADDY_API_KEY environment variable
   token = var.addy_token
 }
+
+variable "addy_api_key" {
+  type = string
+  sensitive = true
+}
