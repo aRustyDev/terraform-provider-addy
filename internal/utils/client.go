@@ -1,9 +1,9 @@
 package utils
 
 import (
-	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -47,32 +47,44 @@ func NewClient(ctx context.Context) (*http.Client, error) {
 	}
 }
 
-func Curl(ctx context.Context, client *http.Client, endpoint string, method string, token string) {
+func Curl(ctx context.Context, client *http.Client, endpoint string, method string, token string) ([]byte, error) {
 	var bearer string = "Bearer " + token
 
-	req, err := http.NewRequest("GET", api+"/"+endpoint, nil)
+	tflog.Debug(ctx, "Response status")
+	req, err := http.NewRequest(method, api+"/"+endpoint, nil)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Add("Authorization:", bearer)
-	req.Header.Add("Content-Type:", "application/json")
-	req.Header.Add("X-Requested-With:", "XMLHttpRequest")
+	req.Header.Add("Authorization", bearer)
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("X-Requested-With", "XMLHttpRequest")
 
-	tflog.Trace(ctx, "Sending request: "+endpoint) // TODO: pretty print the 'req' object
+	tflog.Trace(ctx, "Sending request", map[string]interface{}{
+		"endpoint": endpoint,
+		"method":   method,
+		"url":      api + "/" + endpoint,
+	})
 
 	resp, err := client.Do(req)
-
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
 	defer resp.Body.Close()
 
-	tflog.Debug(ctx, "Response status: "+resp.Status)
+	tflog.Debug(ctx, "Response status", map[string]interface{}{
+		"status": resp.Status,
+		"code":   resp.StatusCode,
+	})
 
-	scanner := bufio.NewScanner(resp.Body)
-	for i := 0; scanner.Scan() && i < 5; i++ {
-		fmt.Println(scanner.Text())
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		panic(err)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
+
+	return body, nil
 }

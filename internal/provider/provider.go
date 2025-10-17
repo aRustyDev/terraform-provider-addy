@@ -130,7 +130,10 @@ func (p *addyProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 	// Make the HashiCups client available during DataSource and Resource
 	// type Configure methods.
-	resp.DataSourceData = client
+	resp.DataSourceData = &addydata.DataSourceData{
+		Client: client,
+		ApiKey: api_key,
+	}
 	resp.ResourceData = client
 }
 
@@ -142,6 +145,7 @@ func (p *addyProvider) DataSources(_ context.Context) []func() datasource.DataSo
 		addydata.NewAliasDataSource,
 		addydata.NewAliasesDataSource,
 		addydata.NewAppVersionDataSource,
+		addydata.NewApiTokenDetailsDataSource,
 	}
 }
 
