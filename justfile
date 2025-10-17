@@ -44,12 +44,13 @@ tag: build-release
     @docker image tag "{{ APP_NAME }}:{{ VERSION }}" "{{ DOCKER_CR }}:{{ VERSION }}"
     @docker image push "{{ DOCKER_CR }}:{{ VERSION }}"
 
-test:
+test: tf-init
     # Note: The exact path to policy.go might vary. A more robust way is to define an interface in your code
     # that mirrors azcore.TokenCredential if you have trouble with direct generation.
     # Or, more commonly, your code will accept an azcore.TokenCredential interface.
     @mockgen -source="{{ env("GOPATH") }}/pkg/mod/github.com/Azure/azure-sdk-for-go/sdk/azcore@vX.Y.Z/policy/policy.go" -destination=mocks/mock_azcore_policy.go -package=mocks TokenCredential
     @go test -v ./...
+    @terraform test -test-directory=examples/tests
 
 upgrade-make-deps:
     @echo "TODO: Script upgrading make deps"
@@ -72,3 +73,10 @@ clean:
     @docker image rm $(docker image inspect "{{ APP_NAME }}-tui:{{ VERSION }}" | jq '.[].Id' | rg -o "sha256:(.{12})" | cut -d: -f2)
     @docker image rm $(docker image inspect "{{ APP_NAME }}-api:{{ VERSION }}" | jq '.[].Id' | rg -o "sha256:(.{12})" | cut -d: -f2)
     @docker image rm $(docker image inspect "{{ APP_NAME }}-headless:{{ VERSION }}" | jq '.[].Id' | rg -o "sha256:(.{12})" | cut -d: -f2)
+
+tf-init:
+    @tenv tf install 1.14
+    @terraform init
+
+examples: tf-init
+    @cd examples && terraform plan
