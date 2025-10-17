@@ -1,10 +1,11 @@
 terraform {
-  required_providers {
-    addy = {
-      source  = "github.com/aRustyDev/addy"
-      version = "0.1.0"
+    required_version = ">= 1.14"
+    required_providers {
+        addy = {
+        source  = "github.com/aRustyDev/addy"
+        version = "0.1.0"
+        }
     }
-  }
 }
 
 provider "addy" {
