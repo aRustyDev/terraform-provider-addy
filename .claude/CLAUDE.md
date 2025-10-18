@@ -177,9 +177,10 @@ Current examples live at `.claude/examples/terraform`. Expand gradually:
 
 ## Testing Strategy
 - Unit tests: isolate Curl wrapper, mock transport via custom `http.RoundTripper`.
-- Acceptance tests: gated by `TF_ACC=1` environment variable; require valid `ADDY_API_KEY`.
+- Acceptance tests: gated by `TF_ACC=1` environment variable; require valid `ADDY_API_KEY` & live API; skip tests when `ADDY_API_KEY` missing..
 - Golden file state snapshots (optional) for complex nested structures; tests for schema JSON state outputs using example responses.
 - Linting: integrate `golangci-lint` for static checks.
+- Use `terraform-plugin-testing` for plan/apply checks.
 
 ## Future Enhancements (Deferred)
 - Bulk endpoints modeling once base CRUD stable.
