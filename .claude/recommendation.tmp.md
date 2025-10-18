@@ -1,19 +1,22 @@
-Recommendation
-Yes—put the actionable iteration checklist in a dedicated file (`.claude/AGENT_CHECKLIST.md`) and reference it from `CLAUDE.md`. This separation:
-- Prevents duplication and “drift” when tweaking process.
-- Keeps `CLAUDE.md` readable (strategic context) while `AGENT_CHECKLIST.md` remains purely operational.
-- Makes it easier for a slash-command or Zed Agent to extract only the step list.
+Makes it easier for a slash-command or Zed Agent to extract only the step list.
 
 ### For Slash Commands / Zed Agent Threads
+
 - You can implement a command like `/next-step` that fetches and prints the next unchecked item from `AGENT_CHECKLIST.md`.
 - Provide anchors (you could add `## [Step 1] Selection & Classification` style headings if machine parsing helps).
-- Avoid copying the checklist into multiple places—point everything at the canonical path.
+- cmd: ‘/implement-endpoint target’ 
+- cmd: ‘/review-endpoint target’
+- use central “switch” file for providing current targets/instructions
 
 ### For Claude-Code vs Zed Agent Approaches
+
 - Claude-code agent: reads the checklist for procedural next actions.
-- Zed agent thread: can hyperlink or auto-open `.claude/AGENT_CHECKLIST.md` when starting a new iteration.
-- Only reference from `CLAUDE.md`—no need to embed the entire list again.
 - Optionally create a minimal pointer in README for humans: “Development process defined in `.claude/AGENT_CHECKLIST.md`.”
+
+### Zed agent items
+
+- Zed agent thread: can hyperlink or auto-open `.claude/AGENT_CHECKLIST.md` when starting a new iteration.
+- Q: what zed “tasks” should this repo have?
 
 ### Optional Enhancement
 Add a small machine-readable header at top of checklist:
@@ -22,39 +25,45 @@ Add a small machine-readable header at top of checklist:
 ```
 So tools can confirm they’re parsing the right doc.
 
-## Does It Need To Be In More Than One Place?
-No. Single source of truth is superior. Redundant copies increase maintenance burden and risk of contradictory instructions. Use references/links only:
-- `CLAUDE.md` → “See `.claude/AGENT_CHECKLIST.md`”
+
 - README (optional) → “Development process: `.claude/AGENT_CHECKLIST.md`”
 
 ## Next Suggested Actions
-1. Replace existing `CLAUDE.md` content with the revised version above.
-2. Add the new `AGENT_CHECKLIST.md`.
-3. Update README to mention both documents.
+3. Update README to mention CLAUDE.md & `.claude/AGENT_CHECKLIST.md`
 4. Begin implementing HTTP client improvements before adding more resources (foundation first).
 
-If you want, I can also draft an updated README or the HTTP client retry refactor next—just let me know.
-
+Draft an updated README 
+Draft the HTTP client retry refactor
 
 ---
 
-> Critique of Existing TODO List
+> TODO List
 
-Critique
-- Lacks grouping by phase (foundation vs features vs polish).
 - “Enable provider variables to be sourced from ENV vars” partly done; refine to include precedence & doc updates.
-- Missing tasks for:
+- update README; how and when
   - README sections: installation, environment variable usage, known limitations.
+- documentation generation/review. 
   - Provider documentation generation (for eventual registry).
+  - adding to mdbook 
+  - comment documentation 
+  - variable/output documentation 
+  - schema documentation 
+- testing 
+  - Implement test scaffolding (unit + acceptance structure).
+  - terraform tests
+  - golang tests
+  - docker based testing
+- justfile
+  - Add linting tools (e.g. `golangci-lint`).
+- cicd: release
+  - Release pipeline (tagging, changelog).   
+- Missing tasks for:
   - License relocation (top-level LICENSE).
   - Consistency pass to remove “HashiCups” references.
-  - Implement test scaffolding (unit + acceptance structure).
-  - Add linting tools (e.g. `golangci-lint`).
-  - Release pipeline (tagging, changelog).
   - Data source modeling for app-version, api-token-details enhancements (null handling test).
   - Add importers: specify which resources (domain, alias, recipient, rule, username).
   - Schema stability review before 0.1.0 release.
-  - Observability improvements (standardized logging fields).
+  - Observability improvements (standardized logging fields). Observability requirements/guidelines; when where what level
   - Pagination doc + example.
 
 
@@ -63,16 +72,12 @@ Critique
 . CLAUDE.md Critique & Enhancements
 
 ### Observations
-- “Repository Overview” section is empty placeholder—should be concretely filled.
+
 - Data Sources vs Resources classification currently lists both list and single endpoints redundantly; decide pattern:
   - Usually: single object = resource (if mutable), list endpoint becomes data source returning collection.
   - If an endpoint is read-only (e.g. `app-version`), data source only.
-- The section “Examples Directory (to create)” now outdated because examples exist in `.claude/examples/terraform/`.
 - Workflow section good but can be made more precise with per-step artifacts and gating conditions.
 - Checklist truncated (“Ran (or prepared)”) and missing test/doc/build clarity.
-- Non-Goals useful but can be refined to prevent scope creep explicitly (e.g., “No speculative endpoints” separate from “No rewriting OpenAPI”).
-
----
 
 ---
 
@@ -105,14 +110,15 @@ Add a `internal/model` package with typed Go structs (one per endpoint) mirrorin
 ## Suggested Enhancements to Repo (Document in CLAUDE.md)
 
 - Create top-level `LICENSE` file (move content out of `internal/about/license.go`).
+  - should LICENSE be extracted/read by go or vice versa? (Want license available from code at runtime)
 - Expand `README.md` with installation, local dev instructions:
   - `go build -o terraform-provider-addy`
   - Terraform CLI `.terraformrc` development override
   - Example usage.
-- Add `Makefile`:
-  - `make build`
-  - `make test`
-  - `make lint`
+- Add `Justfile`:
+  - `just build`
+  - `just test`
+  - `just lint`
 - Add `tools.go` if you standardize codegen or lint deps.
 - Add GitHub Actions (if desired) for `go vet`, `golangci-lint`, `terraform validate`.
 - Add `internal/test` with acceptance scaffolding.
