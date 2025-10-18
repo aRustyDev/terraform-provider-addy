@@ -35,6 +35,7 @@
 - [ ] sdlc: `setup`
 - [ ] sdlc: `build`
 - [ ] sdlc: `install-local`
+- [ ] implement all justfile commands listed in the `.claude/**` files
 
 ## Zed Tasks
 
