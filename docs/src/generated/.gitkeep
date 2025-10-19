@@ -1,0 +1,5 @@
+# Placeholder for generated provider documentation artifacts.
+# This directory will store provider-generated schema/reference markdown (e.g., terraform-plugin-docs output)
+# that is then linked from narrative concept pages rather than duplicated.
+#
+# Do not remove this file until at least one generated artifact is committed.

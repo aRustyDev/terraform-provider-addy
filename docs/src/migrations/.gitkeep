@@ -1,0 +1,5 @@
+# Placeholder for the migrations/ directory.
+# Actual migration guides are added ONLY for MAJOR releases (e.g., 2.0.0.md).
+# See migration_template.md for the structure to copy when preparing a new guide.
+#
+# Do not remove this file until at least one real migration guide exists.

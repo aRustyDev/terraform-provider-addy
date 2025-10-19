@@ -197,6 +197,39 @@ Design sections in this file are treated as read-only references during those st
 
 ---
 
+## Documentation Layering & Boundaries
+<!-- anchor:documentation-layering -->
+
+This section summarizes how user-facing documentation is layered relative to internal contributor guidance.
+Normative (MUST / MUST NOT) rules stay in `.rules`; this file records rationale; execution steps live in `AGENT_CHECKLIST.md`; troubleshooting (developer-focused) resides in `.claude/FAQ.md`. Users consume narrative concept material in the mdBook (`docs/`) while attribute-level schema details are generated (terraform-plugin-docs).
+
+| Purpose | Location | Primary Audience | Change Cadence |
+|---------|----------|------------------|----------------|
+| Operational policies (normative) | `.rules` | Contributors / CI | Low (controlled) |
+| Design rationale (WHY) | `CLAUDE.md` | Contributors / reviewers | Moderate |
+| Workflow (HOW to implement) | `AGENT_CHECKLIST.md` | Contributors / agents | Moderate |
+| Troubleshooting (dev) | `.claude/FAQ.md` | Contributors | Moderate |
+| Narrative user concepts (architecture, versioning, pagination, retry, security, observability, migrations) | `docs/` (mdBook) | Provider users | Moderate |
+| Generated schema reference (arguments, attributes) | terraform-plugin-docs output | Provider users | Frequent (per release) |
+
+Principles:
+1. No Duplication: Concept pages must not replicate full attribute tables—link instead.
+2. Atomic Growth: Each new endpoint adds a resource or data source page (or updates an index) in the mdBook.
+3. Explicit Triggers: Pagination, retry, security, observability, or breaking version changes require mdBook updates.
+4. Separation of Audiences: Internal rationale may evolve faster; mdBook aims for stability and clarity for end users.
+5. Migration Discipline: Only MAJOR releases introduce a migration guide (`docs/src/migrations/<major>.md`).
+
+Rationale:
+- Reduces risk of drift between internal policies and externally consumed docs.
+- Keeps provider upgrades predictable (users read narrative + CHANGELOG; contributors enforce policies via CI).
+- Supports automated checks: new endpoint → new mdBook page; MAJOR bump → migration guide.
+
+Open Considerations (non-normative ideas):
+- Potential include directives to surface generated schema fragments directly (future).
+- Lint rule to detect large duplicated tables in concept pages.
+
+---
+
 ## Future Enhancements (Design Outlook)
 <!-- anchor:future-enhancements -->
 1. **Importers:** Add import capability per resource once CRUD stable (expected order: domain, alias, recipient, rule, username).
@@ -224,6 +257,7 @@ Anchors (for programmatic retrieval):
 - security-logging
 - bulk-endpoints
 - versioning
+- documentation-layering
 - method-plan-tables
 - workflow
 - future-enhancements

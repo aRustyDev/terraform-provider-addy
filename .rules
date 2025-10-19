@@ -1,0 +1,421 @@
+---
+doc_type: provider-policies
+scope: terraform-provider-addy
+purpose: normative-operational-rules
+rules_version: 4
+precedence: ".rules > CLAUDE.md > AGENT_CHECKLIST.md"
+authoritative_checklist: .claude/AGENT_CHECKLIST.md
+design_rationale: .claude/CLAUDE.md
+method_tables_dir: .claude/examples/method-tables/
+open_work_items: .claude/TODO.md
+provider_framework_version: v1.16.1
+go_version: 1.25.x
+terraform_min_version: 1.6.0
+release_tag_policy: ci-only
+minor_version_increment_policy: per-endpoint
+test_coverage_target: 80
+doc_generation_tool: terraform-plugin-docs
+acceptance_test_requirement: true
+last_updated: 2025-10-19
+status: active
+---
+
+# Project Operational Rules
+
+This file defines authoritative policies (“WHAT must be done”).
+For rationale (“WHY”) see `CLAUDE.md`.
+For execution workflow (“HOW”) see `AGENT_CHECKLIST.md`.
+
+If any conflict arises: **.rules > CLAUDE.md > AGENT_CHECKLIST.md**.
+
+---
+
+## Document Map
+
+| Purpose | File / Directory |
+|---------|------------------|
+| Policies & enforcement | `.rules` |
+| Design & modeling rationale | `.claude/CLAUDE.md` |
+| Iteration workflow steps | `.claude/AGENT_CHECKLIST.md` |
+| Per-entity method plan tables | `.claude/examples/method-tables/` |
+| Backlog / roadmap items | `.claude/TODO.md` |
+| Terraform usage examples | `.claude/examples/terraform/` |
+| OpenAPI contract | `.claude/examples/openapi.yaml` |
+| Error code meanings | `.claude/examples/errors.toml` |
+| Sample API responses | `.claude/examples/responses/` |
+| FAQ & troubleshooting | `.claude/FAQ.md` |
+| User-facing narrative docs (mdBook) | `docs/` |
+
+---
+
+## Precedence Policy
+
+1. This `.rules` file defines mandatory constraints.
+2. `CLAUDE.md` may elaborate design reasoning but must not override policies here.
+3. `AGENT_CHECKLIST.md` executes within these constraints; it must reference rather than redefine normative rules.
+
+---
+
+## Core Development Policies
+
+- No `panic()` in committed provider code (replace with diagnostics / returned errors).
+- No logging of sensitive values: API key, bearer token, public_key contents.
+- All new resources MUST include unit tests and acceptance tests (see Testing Standards).
+- All new data sources MUST include unit tests; acceptance tests encouraged if external state variance matters.
+- Each endpoint integration (resource or data source) triggers a MINOR version bump.
+- One endpoint per MINOR release (atomic incremental delivery).
+- Code MUST compile (`go build ./...`) before commit / PR.
+- Linting MUST pass (golangci-lint) with no unsuppressed warnings.
+- Coverage MUST remain >= test_coverage_target (80%) excluding generated/vendor code.
+
+---
+
+## Versioning Policy
+
+Semantic Versioning: MAJOR.MINOR.PATCH
+
+| Bump Type | Trigger |
+|-----------|---------|
+| MINOR | Addition of a new resource, data source, or major nested block structure |
+| PATCH | Bug fixes, performance improvements, non-surface changes, docs-only updates |
+| MAJOR | Backward incompatible schema or behavior (attribute removal/rename, type change) |
+
+Rules:
+- **CI-only** release tagging: developers must not push git tags for releases manually.
+- Local development uses pre-release suffixes (`-dev`, `-alpha.N`, `-rc.N`) or build metadata (`+dev.<sha>`).
+- `internal/about/version.go` is the single source of truth.
+- MINOR increments are intentionally frequent (per endpoint); changelog must reflect each addition distinctly.
+- PATCH does not introduce new user-configurable attributes.
+
+CI Preconditions for Tag:
+1. Version changed in `internal/about/version.go`.
+2. CHANGELOG entry for that version exists.
+3. Tests, lint, coverage pass.
+4. No outstanding “TODO” markers in policies.
+
+Rationale details live in `CLAUDE.md#versioning`.
+
+---
+
+## Release Tagging Policy
+
+- CI creates annotated tag `vX.Y.Z` only after verification steps.
+- Tag creation script MUST validate atomicity (only one endpoint addition per MINOR).
+- Manual tag pushes are rejected (CI enforcement recommended).
+
+---
+
+## Git / Branching Policy
+
+| Action | Requirement |
+|--------|-------------|
+| Feature work | Branch from `main` named `feat/<short-desc>` |
+| Bug fix | Branch `fix/<issue-id-or-desc>` |
+| Release prep | Handled by CI, not a manual branch |
+| Merge strategy | Pull request with ≥1 review, status checks green |
+
+No direct commits to `main`.
+
+---
+
+## Dependency Policy
+
+- Avoid adding external deps unless necessary for core functionality.
+- Justification required in PR description for any new dependency.
+- Security-sensitive dependencies should be pinned explicitly (no floating versions).
+
+---
+
+## Logging Policy
+
+Required fields (at least at Debug level for CRUD operations):
+- `operation` (create|read|update|delete|plan)
+- `endpoint` (path sans host)
+- `status_code`
+- `entity_id` (when available)
+- Optional: `duration_ms`
+
+Prohibited:
+- Authorization header values
+- API key / token
+- Full body dumps (truncate if needed for debugging to ≤300 bytes)
+
+Trace level reserved for HTTP request composition or retry details.
+
+Rationale: `CLAUDE.md#security-logging`.
+
+---
+
+## Error Handling Policy
+
+- Load `errors.toml` once at startup / first use into in-memory map.
+- On non-2xx response: produce diagnostic including status code + mapped meaning + truncated body snippet.
+- 429 responses: apply exponential backoff with jitter (see Retry Policy).
+- Parsing failures: distinct diagnostic “Parse Error”.
+- Unknown status codes: “Unexpected status code <code>”.
+
+No silent recovery; each failure path must surface a diagnostic.
+
+Design rationale: `CLAUDE.md#error-handling`.
+
+---
+
+## Retry Policy (Operational)
+
+Only applies to HTTP 429:
+- Attempts: max 5
+- Base delay: 500ms * 2^(attempt-1)
+- Jitter: random 0–100ms
+- Abort if cumulative sleep > 15s or non-429 encountered
+- Non-idempotent POST requests are not retried unless endpoint documented safe.
+
+Implementation must be centralized (single helper) to ensure consistency.
+
+Design rationale: `CLAUDE.md#retry-backoff`.
+
+---
+
+## Security Policy
+
+- API key resolution order: Terraform config attribute `api_key` overrides `ADDY_API_KEY` env var.
+- Validate `api_key` non-empty; unknown values produce diagnostics.
+- Sensitive attribute(s): API key (and public key contents if deemed sensitive).
+- No disk persistence of raw response bodies.
+- Recommended User-Agent: `terraform-provider-addy/<version>`.
+
+---
+
+## Pagination Policy
+
+Initial Implementation:
+- Provide `page_number`, `page_size` attributes for collection data sources.
+- Optional future: `all` + `limit` to iterate across pages safely.
+- Use server metadata (`meta.last_page`, etc.) for termination.
+- Expose optional computed fields: `total_items`, `last_page`.
+
+Agents must not implement full deep pagination without guard rails.
+
+Design rationale: `CLAUDE.md#pagination`.
+
+---
+
+## Bulk Endpoints Policy
+
+Status: Deferred
+
+| Endpoint Type | Current Action |
+|---------------|----------------|
+| Bulk activate/deactivate/delete/restore | Not implemented |
+| Bulk recipient assignment | Not implemented |
+| Restore / forget alias endpoints | Not modeled until single-object lifecycle stable |
+
+Future consideration: ephemeral action resource with ForceNew semantics.
+
+Design rationale: `CLAUDE.md#bulk-endpoints`.
+
+---
+
+## File & Naming Conventions
+
+| Item | Convention |
+|------|------------|
+| Data source file | `<entity>_data_source.go` |
+| Resource file | `<entity>_resource.go` |
+| Shared model file | `<entity>_model.go` |
+| Type Names | `<Entity>DataSource`, `<Entity>Resource` |
+| Attributes | snake_case |
+| Method plan tables | `.claude/examples/method-tables/<entity>.md` |
+
+No provider prefix in type names unless collision risk arises.
+
+---
+
+## Testing Standards (Normative)
+
+| Category | Requirements |
+|----------|--------------|
+| Unit Tests | Must mock HTTP via custom RoundTripper; cover success + error + retry paths |
+| Acceptance Tests | Required for all resources; gated by `TF_ACC=1`; skip if `ADDY_API_KEY` absent |
+| Lifecycle Coverage | For each resource: Create → Read → Update → Read → Delete |
+| ForceNew | Test scenario altering ForceNew attribute triggers planned replacement |
+| Negative Cases | 422 validation, 404 not found, 429 retry success |
+| Data Sources | Test basic read + filtered read + invalid parameter |
+| Golden Files (optional) | `testdata/` for complex nested JSON (rules, recipients) |
+| Coverage | ≥ 80%; CI fails below threshold |
+| No Real Net in Unit | Unit tests must not call live API |
+| Naming | `Test<Resource|DataSource><Entity><Action>` (e.g., `TestResourceDomainCreate`) |
+| Parallelization | Unit tests may use `t.Parallel()`. Acceptance tests should not initially |
+
+Rationale: explained in design and checklist documents.
+
+---
+
+## Documentation Standards (Normative)
+
+| Item | Requirement |
+|------|-------------|
+| Terraform Docs | Generated via `terraform-plugin-docs` on each MINOR release |
+| Attribute Docs | Every schema attribute MUST have MarkdownDescription |
+| GoDoc | Exported types/functions must have doc comments |
+| README | Updated with each MINOR release summarizing new endpoint integration |
+| mdBook (docs/) | Extended narrative (architecture, contribution, versioning) |
+| No TODOs | Replace TODO with actionable items in `.claude/TODO.md` |
+
+---
+
+## Observability Phasing
+
+| Phase | Included | Deferred |
+|-------|----------|----------|
+| Phase 1 | Structured logging, basic error diagnostics | Metrics, tracing |
+| Phase 2 | Add metrics (latency histogram, rate limit counter) | Tracing |
+| Phase 3 | (Optional) OpenTelemetry tracing | — |
+
+No tracing instrumentation until stability confirmed.
+
+---
+
+## Dependency Hygiene
+
+- Pin versions explicitly.
+- Avoid transitive dependency bloat.
+- Security / license scanning integrated via CI (future planned).
+- Introduce new deps only with PR justification.
+
+---
+
+## Enforcement Recommendations (CI Hooks)
+
+Suggested validation steps:
+1. Verify no `panic(` usage in modified Go files.
+2. Check coverage ≥ target.
+3. Confirm presence of tests for new endpoint.
+4. Diff analysis: If file added under `internal/resource` or `internal/data`, ensure MINOR version bump & CHANGELOG entry.
+5. Confirm `.rules` has no TODO entries.
+6. Lint all packages (golangci-lint).
+7. Validate version in User-Agent (optional runtime test).
+
+---
+
+## Cross-File References
+
+| Policy Area | Rationale Location |
+|-------------|--------------------|
+| Versioning | `CLAUDE.md#versioning` |
+| Retry/Backoff | `CLAUDE.md#retry-backoff` |
+| Pagination | `CLAUDE.md#pagination` |
+| Bulk Endpoints | `CLAUDE.md#bulk-endpoints` |
+| Toggle Modeling | `CLAUDE.md#toggle-modeling` |
+| Schema Modeling | `CLAUDE.md#schema-modeling` |
+| Error Handling | `CLAUDE.md#error-handling` |
+| Security & Logging | `CLAUDE.md#security-logging` |
+
+Agents should pull narrative intent from those anchors; do not reinterpret policy.
+
+---
+
+## Maintenance Policy
+
+- Update `rules_version` when material policy changes occur.
+- Reflect change in `CHANGELOG.md` under “Policy Updates”.
+- Review `.rules` quarterly or upon major architectural expansion.
+
+---
+
+## Prohibited Actions
+
+| Action | Reason |
+|--------|--------|
+| Manual release tag creation | Breaks reproducibility & CI audit trail |
+| Adding endpoint without bumping MINOR | Violates atomic evolution principle |
+| Logging full HTTP bodies | Risk of sensitive data leakage |
+| Skipping acceptance tests for a resource | Undermines lifecycle reliability |
+| Hardcoding secrets in tests | Security violation |
+| Silent retries without logging | Observability gap |
+| Suppressing lint warnings without comment | Reduces code quality accountability |
+
+---
+
+## Policy Change Workflow
+
+1. Propose change in PR description.
+2. Update `.rules` + `CLAUDE.md` anchors if design rationale impacted.
+3. Bump `rules_version`.
+4. Update CHANGELOG (“Policy Changes” section).
+5. Obtain at least one maintainer approval before merge.
+
+---
+
+## Final Notes
+
+- Keep implementation lean; policy solely defines guard rails.
+- Policy drift must be minimized—CI should fail on divergence (automation recommended).
+- Agents parse frontmatter keys for automated reasoning; keep stable key names.
+
+## User-Facing Documentation Policy
+
+This section defines normative rules for maintaining user-facing documentation in the mdBook (`docs/`) without duplicating internal policy or generated schema reference.
+
+### Layering
+
+| Layer | Location | Audience | Content |
+|-------|----------|----------|---------|
+| Policies (normative must/shall) | `.rules` | Contributors / automation | Operational constraints |
+| Design rationale (why) | `.claude/CLAUDE.md` | Contributors | Architectural & modeling decisions |
+| Execution workflow (how) | `.claude/AGENT_CHECKLIST.md` | Contributors / agents | Stepwise implementation |
+| Troubleshooting (dev) | `.claude/FAQ.md` | Contributors | Internal pitfalls & resolutions |
+| Generated schema docs | (terraform-plugin-docs output) | Users | Argument & attribute reference tables |
+| Narrative user docs | `docs/` (mdBook) | Users | Concepts, architecture, versioning, security, pagination, retry, observability, migrations |
+
+### Triggers Requiring mdBook Update
+
+| Trigger | Required mdBook Action |
+|---------|------------------------|
+| New resource | Add/extend page under `docs/src/resources/<resource>.md`; update navigation |
+| New data source | Add page under `docs/src/data-sources/<data_source>.md` |
+| New pagination capability (e.g. `all`, `limit`) | Update pagination concept page |
+| Retry/backoff policy change | Update retry concept page |
+| Security / sensitive handling change | Update security concept page |
+| Observability phase advancement | Update observability page |
+| Breaking change (MAJOR) | Add migration guide `docs/src/migrations/<major>.md` |
+| Deprecation removal | Update migration guide + affected concept pages |
+| Importer feature added | Add / update importers or resource usage guidance |
+
+### Directory Conventions
+
+| Area | Path Pattern |
+|------|--------------|
+| Concept guides | `docs/src/concepts/<topic>.md` |
+| Resources | `docs/src/resources/<resource>.md` |
+| Data sources | `docs/src/data-sources/<data_source>.md` |
+| Migrations | `docs/src/migrations/<major>.md` |
+| Generated reference (linked, not duplicated) | `docs/src/generated/` |
+
+### Content Rules
+
+- Do NOT copy full attribute tables into mdBook; link to generated provider docs.
+- Concept pages focus on behavior, lifecycle semantics, upgrade/migration guidance, and usage patterns.
+- README stays a concise landing (install, quick start, links to mdBook & registry).
+- Migration guides appear only for MAJOR versions.
+
+### PR Acceptance Criteria (Documentation Aspect)
+
+A PR introducing any trigger above MUST:
+1. Modify or add the corresponding mdBook page(s).
+2. Update `SUMMARY.md` navigation if a new page is added.
+3. Ensure no stale references to removed/renamed attributes remain.
+4. Reference the CHANGELOG entry describing the change.
+
+If no mdBook change is required, the PR description MUST briefly justify (e.g., “PATCH: internal refactor, no user-visible change”).
+
+### CI / Automation Recommendations
+
+- Detect new files under `internal/resource/` or `internal/data/` → enforce presence of matching `docs/src/resources/` or `docs/src/data-sources/` page delta.
+- On MAJOR version bump → require a migration guide file.
+- Link checker validates all intra-book links.
+- Optional: compare generated schema docs vs concept pages to warn on possible duplication (heuristic).
+
+---
+
+---
+END OF .rules
