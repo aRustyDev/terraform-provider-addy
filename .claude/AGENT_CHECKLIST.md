@@ -1,180 +1,268 @@
 ---
-meta: format=iterative-checklist; version=2
+doc_type: workflow-checklist
+scope: terraform-provider-addy
+purpose: iterative-endpoint-implementation
+precedence: ".rules > CLAUDE.md > AGENT_CHECKLIST.md"
+design_rationale: .claude/CLAUDE.md
+policies: ./.rules
+method_tables_dir: .claude/examples/method-tables/
+version: 3
+last_updated: 2025-10-18
+status: active
 ---
 
-# Agent Iteration Checklist (Authoritative)
+# Agent Iteration Checklist (Authoritative Execution Steps)
 
-Complete ALL items for exactly one endpoint or resource per iteration before moving on. This enforces incremental, fully integrated progress and prevents half-finished implementations accumulating technical debt.
+This checklist defines the execution FLOW for implementing one endpoint (resource or data source) at a time.
+It intentionally **does not duplicate** normative policies (logging, security, versioning, testing) or deep design rationale.
+For those:
+- Policies: see `.rules`
+- Design rationale & anchors: see `.claude/CLAUDE.md`
+- Per-entity method plans: see `.claude/examples/method-tables/`
+- Roadmap: `.claude/TODO.md`
+
+If any conflict arises follow precedence: `.rules > CLAUDE.md > AGENT_CHECKLIST.md`.
+
+---
+
+## Anchor References (Used Below)
+| Topic | Anchor in CLAUDE.md |
+|-------|---------------------|
+| Endpoint classification | `#endpoint-classification` |
+| Toggle modeling | `#toggle-modeling` |
+| Schema modeling rationale | `#schema-modeling` |
+| Retry/backoff design | `#retry-backoff` |
+| Pagination design | `#pagination` |
+| Error handling design | `#error-handling` |
+| Bulk endpoints deferral | `#bulk-endpoints` |
+| Versioning rationale | `#versioning` |
+| Method plan tables | `#method-plan-tables` |
+
+---
+
+## Iteration Scope Rule
+Process EXACTLY one logical entity (resource or data source) per iteration. Do NOT batch multiple endpoints.
+
+---
+
+## High-Level Phase Summary
+1. Selection & Classification
+2. CRUD Capability Derivation & Method Plan Confirmation
+3. Spec & Example Extraction
+4. Schema Draft
+5. Implementation Skeleton
+6. HTTP Integration
+7. Error Handling Integration
+8. State Population & Read Normalization
+9. Drift & Idempotency Validation
+10. Logging Hooks (reference policies)
+11. Testing (unit + acceptance planning)
+12. Documentation & Examples
+13. Build & Diagnostics
+14. Code Quality Gate
+15. Versioning & Changelog Update
+16. Commit & Exit Criteria
+
+---
 
 ## 1. Selection & Classification
-- Pick ONE logical entity (e.g. domain, alias, recipient, rule, username) from `openapi.yaml`.
-- Collect all related OpenAPI paths (base path + any activation/toggle variants).
-- Decide: data source vs resource.
-  - Resource if there is at least a POST (create) OR PATCH/PUT (update) OR DELETE (destroy).
-  - Data source if only GET operations exist.
-- Confirm no existing implementation already covers it.
+- Pick ONE endpoint or entity.
+- Use CLAUDE.md endpoint decision tree (`#endpoint-classification`) to classify as resource vs data source.
+- Verify entity not already implemented.
+- Record chosen entity name (e.g. `alias`, `recipient`, `rule`, `username`).
 
-## 2. CRUD Capability Derivation & Planning
-Produce a “Method Plan Table” describing how Terraform methods map to API operations.
-
-1. Enumerate operations:
-   - Create: POST /entities
-   - Read: GET /entities/{id}
-   - Update: PATCH (or PUT) /entities/{id}
-   - Delete: DELETE /entities/{id}
-   - Ancillary toggles (e.g., /active-*, /catch-all-*): map to attributes (e.g., `active`, `catch_all`).
-2. Decide for each Terraform method:
-   - Implement? If missing PATCH, mark mutable-looking fields as ForceNew or confirm immutability.
-   - If no DELETE endpoint: resource may be “orphanable” (avoid unless necessary) or reclassify as data source.
-3. Attribute classification rules:
-   - Required: Field appears in POST body and is mandatory.
-   - Optional: Field appears in POST body but is not required.
-   - Optional+Computed: Server may default or normalize; resource sets but refreshes exact server value.
-   - Computed: Field appears only in responses (never in POST/PATCH).
-   - ForceNew: Field appears in Create (POST) but not accepted in Update (PATCH/PUT) OR API docs indicate immutable.
-   - Sensitive: API key only (for provider); rarely needed at resource attr level unless secrets appear later.
-4. Activation / toggles:
-   - Map paired POST/DELETE (activate/deactivate) or PATCH toggles to a single boolean attribute.
-   - Implement inside Create/Update logic: if plan wants true and object is false → call activate endpoint; inverse for false.
-5. Derive error expectations:
-   - List typical status codes (201 create success, 200 read/update, 204 delete).
-   - Note special error codes (404 after delete, 422 validation).
-6. Data normalization planning:
-   - Identify any fields likely to be reformatted by server (timestamps, counts).
-   - Plan to always perform a Read after Create/Update to synchronize state.
-7. Output artifact (add as code comment at top of file or doc snippet):
-
-Example Method Plan Table (inline comment format):
-```
-Method Plan (alias):
-# Create: POST /api/v1/aliases -> requires domain (required), description (optional)
-# Read:   GET /api/v1/aliases/{id}
-# Update: PATCH /api/v1/aliases/{id} (description, from_name)
-# Delete: DELETE /api/v1/aliases/{id}
-# Toggle active: POST /api/v1/active-aliases (activate), DELETE /api/v1/active-aliases/{id} (deactivate) -> attribute: active (Optional+Computed)
-# Immutable: local_part, domain (ForceNew)
-# Computed: emails_forwarded, emails_blocked, created_at,
-```
-Do not proceed until this table is written.
-
-## 3. Spec & Example Extraction
-- Extract exact field list from `openapi.yaml` path(s).
-- Record which response fields are nullable; treat `null` as Terraform Null.
-- Gather example JSON payload from `.claude/examples/responses/**` (if present).
-- Record required request parameters (query, headers, body).
-- If implementing list data source, Note additional query parameters (pagination, filters).
-
-## 4. Schema Draft
-- Translate Method Plan Table into a Terraform schema; Map fields → Terraform attributes.
-- Assign `Required`, `Optional`, `Computed`, `Optional + Computed`, `ForceNew` flags.
-- Define nested blocks for structured arrays (e.g., rule conditions/actions).
-- Use sets for unordered ID collections; lists for ordered or repeated structured blocks (document ordering rationale).
-- Add `MarkdownDescription` for every attribute.
-- Confirm naming: snake_case, consistent with existing provider style.
-
-## 5. Implementation Skeleton
-- Create or update `<entity>.go` under `internal/data` or `internal/resource`.
-- Add struct types.
-- Implement `Metadata` and `Schema` methods.
-- Remove any placeholder `panic("not implemented")` in modified scope.
-
-## 6. HTTP Integration
-- Add necessary imports & model structs.
-- Use `utils.Curl` (refactored version if available) to perform request(s).
-- Implement CRUD/Read methods:
-  - **Create**: Build body from planned attributes; call POST; then Read.
-  - **Read**: Fetch canonical state; gracefully handle 404 if resource intended to be destroyed.
-  - **Update**: Compare planned changes; if ForceNew attribute changed, Terraform framework should plan replace automatically; otherwise call PATCH; finalize with Read.
-  - **Delete**: Call DELETE (or perform toggle endpoints if a “soft” disable).
-- Activation toggles: Branch on desired vs current state and invoke appropriate endpoints.
-- Add retry for 429 via shared helper (if implemented).
-- Add User-Agent header if available.
-
-##  7. Error Handling
-- Wrap all non-2xx responses: include HTTP code + mapped meaning from `errors.toml`.
-- Shorten body snippet (truncate >300 chars).
-- For unexpected JSON, diagnostic with parse error context (status + mapped meaning + truncated body snippet).
-- For parsing errors: dedicated diagnostic, no panic.
-
-## 8. State Population
-- Map response JSON → typed internal Go model struct(s) → Terraform state objects.
-- Use/Convert to Terraform framework types (`types.StringValue`, `types.BoolValue`, etc.)
-- Use `types.<Type>Null()` for absent/missing/nullable fields.
-- Sort sets deterministically before assigning (if needed).
-- Guarantee Read method always sets all declared attributes (avoid partial state).
-
-## 9. Idempotency & Drift Control
-- After Create/Update always Re-run Read, to capture server normalization.
-- Verify subsequent plan is a no-op (no drift).
-- If server mutates canonical field (e.g., case normalization), accept server value and document in attribute description.
-- Consider `ignore_changes` guidance if server normalizes fields.
-
-## 10. Logging
-- `tflog.Debug` at method entry & exit with keys: `operation`, `endpoint`, `status_code`.
-- `tflog.Debug` at start/end of CRUD/Read with endpoint + method.
-- `tflog.Trace` for request payload size / raw endpoint building (avoid sensitive).
-- Ensure no credential or API key leakage/exposure.
-
-## 11. Testing (Initial)
-- Unit: Mock success + error (e.g., 422 validation).
-- If activation logic present: test path with active=true → POST activation endpoint called.
-- If complex nested parsing: add targeted unmarshal test.
-- Add TODO block for acceptance test (`TF_ACC`) including required preconditions, if endpoint requires live interaction.
-
-## 12. Documentation & Examples
-- Add or update Terraform usage example referencing new resource/data source (See `.claude/examples/terraform/{datasource,resource}`)
-    - **Resource** goes in `examples/resource/<entity>`.
-    - **Data Source** goes in `examples/data-source/<entity>`.
-- Update README “Supported Resources & Data Sources” list.
-- Inline resource comments: ForceNew fields, toggles, server-normalized values.
-- If list data source: show example with pagination query args.
-- Include notes for required preconditions (e.g., verified recipient before alias attachment).
-
-##  13. Build & Diagnostics
-- Run `just build` (no compile errors).
-- No `panic(` left in updated code.
-- Ensure Provider address still correct.
-- No unused imports (`just code-qa` clean).
-
-## 14. Code Quality & Consistency
-- Attribute names match schema draft.
-- Types correct (string vs bool vs int).
-- ForceNew semantics enforced by marking attributes `Required` + absence from Update logic (or explicit plan modifier if needed).
-- Version reference uses central version constant only.
-- Validate attribute naming matches conventions; snake_case, consistent with existing provider style.
-
-## 15. Acceptance Test Plan (If Mutable Endpoint)
-- Outline steps in code comment:
-  - Preconditions.
-  - Precheck (env var set).
-  - Create → Read → Update → Read → Destroy sequence.
-    - Create config.
-    - Update attribute.
-    - Verify toggles.
-    - Destroy.
-- Mark with `// TODO: implement acceptance test (TF_ACC)`
-
-## 16. Commit Preparation
-- Single logical commit (or minimal stack) per entity.
-    - Stage only related changes (avoid mixing unrelated refactors).
-- Commit message
-    - includes: `[feature] add <entity> (<resource|data source>) + tests + example`.
-    - Summarizes endpoint implemented + tests + example additions.
-    - use message template if available (`.github/templates/commit.*.md`)
-- Ensure Diff free of secrets and debug prints.
-
-## 17. Exit Criteria (All Must Be True)
-- CRUD/Read behavior matches Method Plan Table.
-- Example usable without modification (besides secrets).
-- Example config present and accurate.
-- No drift on second plan.
-- No panics / silent failures.
-- Error mappings correct.
-- Diagnostics meaningful.
-- Logging present, structured, & standarized.
-- Endpoint fully operable (plan/apply lifecycle; unless endpoint is down).
-- Checklist items satisfied.
-- Ready to proceed to next endpoint.
+Outcome: Short note (comment or planning doc) “Selected entity: X (resource|data source).”
 
 ---
-End of checklist.
+
+## 2. CRUD Capability Derivation & Method Plan Confirmation
+- Open the method plan file in `method_tables_dir` (e.g. `alias.md`).
+- Confirm operations: Create, Read, Update, Delete, toggles, special endpoints.
+- Ensure ForceNew fields identified match plan table.
+- If no method plan exists, create one following domain example format (then proceed).
+
+Outcome: Confirmed or newly added method plan table (no implementation yet).
+
+---
+
+## 3. Spec & Example Extraction
+- Parse relevant paths from `openapi.yaml`.
+- Collect response field set: required, optional, nullable.
+- Gather associated sample JSON in `responses/` directory.
+- Note query parameters (filters, pagination).
+- Identify toggle endpoints (activation, encryption, catch-all) if applicable.
+
+Outcome: Structured notes (not committed code) listing fields & toggle endpoints.
+
+---
+
+## 4. Schema Draft
+- Translate field list to Terraform framework attributes referencing `#schema-modeling`.
+- Tag each attribute: Required / Optional / Optional+Computed / Computed / ForceNew / Sensitive.
+- Decide nested blocks (conditions, actions, recipients).
+- Decide collection type (Set vs List) citing rationale.
+- DO NOT implement logic here—only schema in code skeleton.
+
+Outcome: Draft `Schema` method (may initially exclude full MarkdownDescription text; fill before commit).
+
+---
+
+## 5. Implementation Skeleton
+- Create `<entity>_resource.go` or `<entity>_data_source.go`.
+- Add struct type, `Metadata`, `Schema` methods.
+- No panics allowed; placeholder stubs return diagnostics if temporarily necessary (avoid committing panics).
+- Add TODO markers only if absolutely needed (remove before exit).
+
+Outcome: Compilable skeleton file with empty CRUD methods (resource) or empty `Read` (data source).
+
+---
+
+## 6. HTTP Integration
+- Implement `Create` / `Read` / `Update` / `Delete` using shared client.
+- For toggles, implement desired vs current reconciliation referencing `#toggle-modeling`.
+- Centralize requests through existing `utils.Curl` or improved client wrapper.
+- Respect retry/backoff design (`#retry-backoff`) for 429 only.
+
+Outcome: CRUD methods perform real HTTP calls (no business logic omitted).
+
+---
+
+## 7. Error Handling Integration
+- Integrate error map from `errors.toml` (policy in `.rules`, rationale `#error-handling`).
+- Produce diagnostics for non-2xx responses.
+- Distinguish parse errors from HTTP errors.
+- No silent recovery.
+
+Outcome: Failures produce clear diagnostics; success flows continue.
+
+---
+
+## 8. State Population & Read Normalization
+- Parse JSON → model structs → terraform types.
+- Represent null values with Null type (not empty string).
+- After Create/Update always perform a Read to capture normalization.
+- Ensure all declared attributes are set (even if Null).
+
+Outcome: State set correctly after lifecycle operations.
+
+---
+
+## 9. Drift & Idempotency Validation
+- Re-run a Read logic path manually (simulate second apply) verifies no extraneous changes.
+- Confirm ForceNew attributes trigger replacement when changed.
+- Document any server-changed fields (e.g., normalized casing) in attribute description.
+
+Outcome: Verified idempotent plan after second apply.
+
+---
+
+## 10. Logging Hooks
+- Insert logging calls per policies in `.rules` (do not replicate rules here).
+- Use standardized keys: operation, endpoint, status_code, entity_id.
+- Avoid sensitive data (API key, tokens, raw bodies).
+
+Outcome: Logging calls present, align with `.rules` requirements.
+
+---
+
+## 11. Testing (Unit + Acceptance Planning)
+- Unit tests:
+  - Mock HTTP transport (success + 422 + 404 + 429 retry sequence).
+  - Test toggle reconciliation (if applicable).
+  - Test ForceNew attribute change path (plan replacement).
+- Acceptance tests (if resource):
+  - Gated by `TF_ACC=1`.
+  - Lifecycle: Create → Update → Toggle(s) → Destroy.
+  - Skip gracefully when `ADDY_API_KEY` absent.
+
+Outcome: Test files created or updated; coverage expected to remain ≥ target.
+
+---
+
+## 12. Documentation & Examples
+- Add or update Terraform example under `.claude/examples/terraform/` (minimal + extended).
+- Ensure MarkdownDescription filled for each schema attribute.
+- Update README section listing new resource/data source.
+- No TODO placeholders in docs (move to `.claude/TODO.md` if deferral required).
+
+Outcome: Documentation & example config complete.
+
+---
+
+## 13. Build & Diagnostics
+- Run full build (`go build ./...`) – success required.
+- Confirm no `panic(` present.
+- Resolve lint warnings.
+- Check drift: second run of tests shows no lingering modifications.
+
+Outcome: Clean build + lint + unit tests passing.
+
+---
+
+## 14. Code Quality Gate
+- Review naming conventions (file & type).
+- Confirm ForceNew logic implemented.
+- Confirm optional + computed toggles treat server output as authoritative.
+- Remove temporary comments / extraneous debug prints.
+
+Outcome: Final code adheres to policy & design rationale.
+
+---
+
+## 15. Versioning & Changelog Update
+- Increment version (MINOR for new endpoint; PATCH for fixes).
+- Update CHANGELOG entry with Added/Changed/Fixed breakdown.
+- Ensure version aligns with `.rules` CI-only tagging policy (local pre-release suffix allowed).
+- Do NOT create manual git tag (CI will handle).
+
+Outcome: Version bump + changelog ready for CI tagging.
+
+---
+
+## 16. Commit & Exit Criteria
+ALL MUST be true:
+- Method plan table consulted; implementation matches plan.
+- CRUD / Read fully functional (if resource) OR Read functional (if data source).
+- Tests (unit + acceptance if required) added & passing.
+- Documentation and examples updated.
+- No panics; diagnostics meaningful.
+- Version + changelog updated.
+- Build, lint, coverage ≥ threshold.
+- No TODO markers left in code or docs.
+- Logs follow policy.
+- Ready for PR merge.
+
+Outcome: PR submission.
+
+---
+
+## Post-Merge Follow-Up (Non-Blocking)
+- Monitor CI release tagging.
+- Validate published docs (terraform-plugin-docs) render expected attribute descriptions.
+- Add future roadmap items to `.claude/TODO.md` if any deferred improvements.
+
+---
+
+## Quick Reference (Do / Avoid)
+
+| Do | Avoid |
+|----|-------|
+| Re-read state after mutations | Skipping final Read |
+| Use Null for absent values | Using empty strings for nullables |
+| One endpoint per iteration | Bundling multiple new entities |
+| Reference anchors for design | Rewriting design logic ad hoc |
+| Centralize retries | Ad-hoc sleep loops |
+| Provide example configs | Leaving new entity undocumented |
+
+---
+
+## Change Log (Local to Checklist)
+| Version | Change |
+|---------|--------|
+| 3 | Converted to reference-based checklist; removed normative duplicates; added anchor mapping & exit criteria emphasis. |
+| 2 | Added CRUD derivation step & method plan table requirement. |
+| 1 | Initial checklist draft. |
+
+---
+
+END OF AGENT_CHECKLIST

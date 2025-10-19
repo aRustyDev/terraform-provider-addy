@@ -73,15 +73,18 @@
 
 ## Context Engineering
 
-- [ ] Clarify Data Sources vs Resources classification pattern
-  - Usually: single object = resource (if mutable), list endpoint becomes data source returning collection.
-  - If an endpoint is read-only (e.g. `app-version`), data source only.
 - [ ] Enhance Workflow section with per-step artifacts and gating conditions.
 - [ ] Expand Checklist with clearer Testing, Documentation, and Build steps.
 - [ ] Add code snippets/examples for common patterns (e.g., schema definition, error handling).
 - [ ] Create a FAQ or Troubleshooting section for common pitfalls.
 - [ ] Define conventions for attribute naming, error handling, and logging.
 - [ ] Add links to relevant documentation (Terraform Plugin SDK, Go best practices).
+- [ ] .rules: how/when to update the mdbook documentation?
+- [ ] .rules: how/when to update the README.md?
+- [ ] .rules: What should be GoDoc vs terraform-plugin-docs vs mdbook?
+- [ ] .rules: mdbook Standards
+- [ ] .rules: How to document Schemas
+- [ ] .rules: How to document examples
 - [ ] Add Example: Alias resource
 - [ ] Add Example: Recipient resource showing encryption toggle
 - [ ] Add Example: Rule resource with nested conditions/actions block
