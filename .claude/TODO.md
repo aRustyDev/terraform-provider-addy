@@ -3,7 +3,7 @@
 ## Foundation
 - [ ] Normalize provider address (development vs registry).
 - [ ] Correct api_key error path (path.Root("api_key")).
-- [ ] Remove legacy "HashiCups" references.
+
 - [ ] Single source version usage (inject from internal/about/version.go).
 - [ ] ENV var precedence: ADDY_API_KEY > config attribute (doc & code).
 - [ ] Move license text to top-level LICENSE file.

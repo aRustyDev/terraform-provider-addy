@@ -31,6 +31,7 @@ If any conflict arises follow precedence: `.rules > CLAUDE.md > AGENT_CHECKLIST.
 | Endpoint classification | `#endpoint-classification` |
 | Toggle modeling | `#toggle-modeling` |
 | Schema modeling rationale | `#schema-modeling` |
+| JSON → schema mapping | `#json-to-schema` |
 | Retry/backoff design | `#retry-backoff` |
 | Pagination design | `#pagination` |
 | Error handling design | `#error-handling` |
@@ -97,7 +98,7 @@ Outcome: Structured notes (not committed code) listing fields & toggle endpoints
 ---
 
 ## 4. Schema Draft
-- Translate field list to Terraform framework attributes referencing `#schema-modeling`.
+- Translate field list to Terraform framework attributes referencing `#schema-modeling` and consult `#json-to-schema` for concrete mapping rules.
 - Tag each attribute: Required / Optional / Optional+Computed / Computed / ForceNew / Sensitive.
 - Decide nested blocks (conditions, actions, recipients).
 - Decide collection type (Set vs List) citing rationale.

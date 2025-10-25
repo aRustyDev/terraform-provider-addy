@@ -105,6 +105,174 @@ Attribute classification logic (normative rules in `.rules`, rationale here):
 
 ---
 
+### JSON → Terraform Schema Mapping (Agent Supplement)
+<!-- anchor:json-to-schema -->
+
+This subsection provides a deterministic mapping procedure for converting Addy API sample JSON (or OpenAPI response schemas) into Terraform Plugin Framework schema attributes.
+
+#### 1. Classification Decision Flow
+
+1. For each JSON field:
+   - Is it user-supplied to create or mutate the object?
+     - If immutable after creation → Required + ForceNew.
+     - If mutable by user → Optional (or Optional + Computed if server defaults/normalizes).
+   - Is it server-only / informational? → Computed.
+   - Is it sensitive? → Mark `Sensitive: true` (never logged).
+   - Is it a toggle endpoint (enable/disable semantics)? → Optional + Computed boolean.
+2. For collections:
+   - Unordered unique scalar IDs → `schema.SetAttribute{ElementType: types.StringType}`.
+   - Ordered sequence with semantic order (e.g. rule conditions) → `schema.ListNestedAttribute`.
+3. For nested objects reused across resource and data source:
+   - Define internal Go model struct.
+   - Provide helper `expandX` / `flattenX` functions for bidirectional mapping (resource only).
+   - Data sources typically only flatten (no expand needed).
+4. Nullable JSON fields:
+   - Represent explicitly with Terraform null using `types.StringNull()`, `types.BoolNull()`, etc. Do NOT use empty strings or `false` as absence stand-ins.
+5. Determine if Optional attributes also need Computed:
+   - If server may inject default or normalize value (e.g. `active`, `catch_all`) → Optional + Computed + PlanModifiers (e.g. `UseStateForUnknown()`).
+
+#### 2. Scalar Field Mapping Rules
+
+| JSON Field Pattern | Terraform Attribute | Notes |
+|--------------------|---------------------|-------|
+| Immutable identifier (`"id"`, primary domain name if not changeable) | `Computed` (id) OR `Required+ForceNew` (domain) | Id comes from server; domain user-specified |
+| User mutable string (`"description"`) | `Optional` StringAttribute | Diff drives update |
+| Server timestamp (`"created_at"`, `"updated_at"`) | `Computed` StringAttribute | Preserve raw server format |
+| Toggle boolean (`"active"`, `"catch_all"`) | `Optional + Computed` BoolAttribute | Update reconciles desired vs current |
+| Pure metric/counter (`"emails_forwarded"`) | `Computed` IntAttribute | Read-only |
+| Sensitive secret (`"api_key"` in config) | Provider config `Sensitive` attribute | Not stored in state |
+
+#### 3. Boolean Toggle Reconciliation Pattern
+
+Pseudo-code (resource Update):
+```go
+desired := req.Plan.Active.ValueBoolPointer() // may be nil
+current := state.Active.ValueBoolPointer()
+if desired != nil && current != nil && *desired != *current {
+    // invoke enable/disable endpoint based on desired
+}
+// Always perform Read afterwards to normalize
+```
+
+#### 4. Nested Structures
+
+Example JSON for rule conditions:
+```json
+"conditions": [
+  { "type": "header", "match": "equals", "field": "X-Source", "value": "smtp" },
+  { "type": "sender", "match": "contains", "values": ["noreply", "alerts"] }
+]
+```
+
+Schema fragment:
+```go
+schema.ListNestedAttribute{
+  Optional: true,
+  NestedObject: schema.NestedAttributeObject{
+    Attributes: map[string]schema.Attribute{
+      "type":  schema.StringAttribute{Required: true},
+      "match": schema.StringAttribute{Required: true},
+      "field": schema.StringAttribute{Optional: true},
+      "value": schema.StringAttribute{Optional: true},
+      "values": schema.ListAttribute{
+        Optional:    true,
+        ElementType: types.StringType,
+      },
+    },
+  },
+}
+```
+
+Rules:
+- Attributes mutually exclusive (`value` vs `values`) enforced via Validate (future) or plan logic.
+- Preserve order to keep user intent; do not convert to Set for conditions.
+
+#### 5. Set vs List Decision
+
+| Criterion | Choose Set | Choose List |
+|-----------|-----------|-------------|
+| Uniqueness required; order irrelevant | Yes | No |
+| Server preserves order meaningfully | No | Yes |
+| Potential duplicates acceptable / meaningful grouping | No | Yes |
+| Large membership requiring deterministic diff suppression | Sometimes (Set) | List (if order matters) |
+
+#### 6. Nullable vs Empty Distinction
+
+JSON:
+```json
+"from_name": null
+```
+Terraform state:
+```go
+from_name = null  // NOT ""
+```
+Rationale: empty string represents a user-chosen empty value; null means “unset/no server value.”
+
+#### 7. Plan Modifiers Usage
+
+Common pattern for Optional + Computed attributes whose value might be unknown at plan time:
+```go
+PlanModifiers: []planmodifier.String{
+  stringplanmodifier.UseStateForUnknown(),
+},
+```
+Purpose: prevents unnecessary diffs when server will populate value during Create.
+
+#### 8. Error-Prone Anti-Patterns
+
+| Anti-Pattern | Issue | Correction |
+|--------------|-------|-----------|
+| Marking server-populated immutable ID as Optional | Causes unnecessary plan diff | Use Computed |
+| Using empty string for null server field | Loses semantic distinction | Use Null value |
+| Modeling toggle endpoints as separate resources | Inflates resource count / complexity | Use boolean attribute + reconciliation |
+| Sorting server-ordered arrays before setting state | Breaks user expectation of order | Preserve server order |
+| Reusing identical nested block name across different semantics | Ambiguous schema | Differentiate block names or embed type field clearly |
+
+#### 9. Mapping Checklist (Per Endpoint)
+
+1. Enumerate fields from OpenAPI + sample JSON.
+2. Tag each field classification (Required, Optional, Optional+Computed, Computed, ForceNew, Sensitive).
+3. Decide for each collection: Set vs List vs ListNestedAttribute.
+4. Identify toggles and implement reconciliation logic.
+5. Determine nullable handling (explicit Terraform null).
+6. Add plan modifiers for Optional+Computed defaults.
+7. Implement flatten (Read) + expand (Create/Update) helpers.
+8. Write unit tests for:
+   - Null handling
+   - Toggle change
+   - ForceNew change
+   - Nested block mapping (single & multi-element)
+9. Ensure MarkdownDescription documents semantics (especially ForceNew & toggle rationale).
+
+#### 10. Example End-to-End Mapping Snippet
+
+Given JSON:
+```json
+{
+  "id": "al_123",
+  "local_part": "sales",
+  "domain": "example.com",
+  "active": true,
+  "description": null,
+  "emails_forwarded": 42,
+  "recipients": [
+    {"id": "rcp_1"},
+    {"id": "rcp_2"}
+  ]
+}
+```
+
+Schema key decisions:
+- `id` → Computed StringAttribute
+- `local_part` + `domain` (immutable identity pair) → Required + ForceNew
+- `active` → Optional + Computed BoolAttribute (toggle)
+- `description` → Optional + Computed StringAttribute (nullable)
+- `emails_forwarded` → Computed IntAttribute
+- `recipients` → ListNestedAttribute (preserve order) OR Set of IDs if order not meaningful (choose based on API semantics)
+
+---
+
+
 ## Retry & Backoff Design
 <!-- anchor:retry-backoff -->
 Rationale (policy specifics in `.rules`):

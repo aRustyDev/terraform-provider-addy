@@ -10,6 +10,7 @@
         "metrics": true
     },
     "autosave": "off",
+    "format_on_save": true,
     "terminal": {
         "alternate_scroll": "on",
         "blinking": "terminal_controlled",

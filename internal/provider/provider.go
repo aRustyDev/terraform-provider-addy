@@ -40,7 +40,7 @@ type addyProvider struct {
 	version string
 }
 
-// hashicupsProviderModel maps provider schema data to a Go type.
+// addyProviderModel maps provider schema data to a Go type.
 type addyProviderModel struct {
 	ApiKey types.String `tfsdk:"api_key"`
 }
@@ -104,7 +104,7 @@ func (p *addyProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 	if api_key == "" {
 		resp.Diagnostics.AddAttributeError(
-			path.Root("key"),
+			path.Root("api_key"),
 			"Missing Addy API Key",
 			"The provider cannot create the Addy API client as there is a missing or empty value for the Addy API key. "+
 				"Set the key value in the configuration or use the ADDY_API_KEY environment variable. "+
@@ -116,19 +116,19 @@ func (p *addyProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		return
 	}
 
-	// Create a new HashiCups client using the configuration values
+	// Create a new Addy client using the configuration values
 	client, err := addyutils.NewClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Unable to Create HashiCups API Client",
-			"An unexpected error occurred when creating the HashiCups API client. "+
+			"Unable to Create Addy API Client",
+			"An unexpected error occurred when creating the Addy API client. "+
 				"If the error is not clear, please contact the provider developers.\n\n"+
-				"HashiCups Client Error: "+err.Error(),
+				"Addy Client Error: "+err.Error(),
 		)
 		return
 	}
 
-	// Make the HashiCups client available during DataSource and Resource
+	// Make the Addy client available during DataSource and Resource
 	// type Configure methods.
 	resp.DataSourceData = &addydata.DataSourceData{
 		Client: client,
