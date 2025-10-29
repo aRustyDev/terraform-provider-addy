@@ -1,7 +1,15 @@
-
 ## Slash Commands
 
-- [ ] `/implement-endpoint target`
+- [ ] `/plan-endpoint target`
+  - implement templates
+    - source code
+    - software tests
+  - define endpoint schema
+  - implement stubbed functions
+    - modify source code templates to match schema
+    - modify source code templates to match schema
+  - Expand plan to include
+- [ ] `/add-endpoint target`
 - [ ] `/review-endpoint target`
 - [ ] `/next-step`: fetches and prints the next unchecked item from `AGENT_CHECKLIST.md`
 
@@ -46,9 +54,9 @@
 - [ ] Pagination helper utility (shared).
 - [ ] HTTP client improvements; Retry helper wrapping Curl; timeout, User-Agent, retry on 429 with backoff+jitter.
 - [ ] Add Shared model structs with a `internal/model` package with typed Go structs (one per endpoint) mirroring JSON; this lets you:
-    - Reuse unmarshalling.
-    - Ensure consistency between data sources and resources.
-    - Provide helper normalization (e.g. convert null strings to `types.StringNull()`).
+  - Reuse unmarshalling.
+  - Ensure consistency between data sources and resources.
+  - Provide helper normalization (e.g. convert null strings to `types.StringNull()`).
 - [ ] Unit test harness (mock RoundTripper).
 - [ ] Golangci-lint integration.
 - [ ] Acceptance test scaffold (TF_ACC gating).
@@ -57,7 +65,6 @@
 - [ ] Add `tools.go` if you standardize codegen or lint deps.
 - [ ] Add GitHub Actions (if desired) for `go vet`, `golangci-lint`, `terraform validate`.
 - [ ] Add `internal/test` with acceptance scaffolding.
-
 
 ## Project Cleanup
 
